@@ -20,15 +20,15 @@ public class Main {
 
         // Loop para conectar a múltiplos peers
         while (true) {
-            System.out.println("Deseja conectar a outro peer? (s/n): ");
+            System.out.print("Deseja conectar a outro peer? (s/n): ");
             String resposta = scanner.nextLine().trim();
 
             if (resposta.equalsIgnoreCase("s")) {
-                System.out.println("Digite o endereço do peer (host): ");
-                String peerHost = scanner.nextLine();
+                System.out.print("Digite o endereço do peer (host): ");
+                String peerHost = scanner.nextLine().trim();
 
-                System.out.println("Digite a porta do peer: ");
-                int peerPort = scanner.nextInt();
+                System.out.print("Digite a porta do peer: ");
+                int peerPort = Integer.parseInt(scanner.nextLine().trim());
 
                 peer.connectToPeer(peerHost, peerPort);
             } else if (resposta.equalsIgnoreCase("n")) {
