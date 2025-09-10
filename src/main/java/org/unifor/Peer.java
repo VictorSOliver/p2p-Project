@@ -13,78 +13,95 @@ public class Peer {
     private String userName;
     private ServerSocket serverSocket;
 
-    private List<Socket> connection = new ArrayList<>();
-    private List<String> chat_history = new ArrayList<>();
+    // Agora a lista guarda objetos PeerConnection
+    private List<PeerConnection> connections = new ArrayList<>();
 
     public Peer(String userName, int port) {
         this.userName = userName;
         try {
             serverSocket = new ServerSocket(port);
-            System.out.println("P2P" + userName + "esta ouvindo na porta " + port);
-        }catch (IOException e){
+            System.out.println("[INFO] Peer " + userName + " está ouvindo na porta " + port);
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    public void start(){
+    public void start() {
         new Thread(this::listenForConnections).start();
-        new Thread(this::listerForUserInput).start();
+        new Thread(this::listenForUserInput).start();
+        System.out.println("[DEBUG] Peer " + userName + " iniciado");
     }
 
-    private void listenForConnections(){
-        try{
-            Socket socket = serverSocket.accept();
-            connection.add(socket);
-            new Thread(() -> handleConnection(socket)).start();
-        } catch (IOException e){
-            e.printStackTrace();
+    private void listenForConnections() {
+        System.out.println("[DEBUG] Entrou em listenForConnections()");
+        while (true) {
+            try {
+                Socket socket = serverSocket.accept();
+                PeerConnection pc = new PeerConnection(socket);
+                connections.add(pc);
+
+                System.out.println("[INFO] Nova conexão recebida de " + socket.getRemoteSocketAddress());
+
+                new Thread(() -> handleConnection(pc)).start();
+            } catch (IOException e) {
+                System.out.println("[ERROR] Falha ao aceitar conexão: " + e.getMessage());
+            }
         }
     }
 
-    private void handleConnection(Socket socket){
-        try{
-            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+    private void handleConnection(PeerConnection pc) {
+        try {
             String message;
-            while((message = in.readLine()) != null){
-                System.out.println(message);
+            while ((message = pc.in.readLine()) != null) {
+                System.out.println("[RECEBIDO de " + pc.socket.getRemoteSocketAddress() + "] " + message);
             }
-        }catch (IOException e){
-            e.printStackTrace();
+            System.out.println("[INFO] Conexão encerrada com " + pc.socket.getRemoteSocketAddress());
+        } catch (IOException e) {
+            System.out.println("[WARN] Conexão perdida: " + pc.socket.getRemoteSocketAddress());
         }
     }
 
-    private void listerForUserInput(){
-        try(BufferedReader userInput = new BufferedReader(new InputStreamReader(System.in))){
-            while(true){
+    private void listenForUserInput() {
+        try (BufferedReader userInput = new BufferedReader(new InputStreamReader(System.in))) {
+            while (true) {
                 String message = userInput.readLine();
-                broadCastMessage(message);
+                broadcastMessage(message);
             }
-        }catch (IOException e){
-            e.printStackTrace();
+        } catch (IOException e) {
+            System.out.println("[ERROR] Falha ao ler entrada do usuário");
         }
     }
 
-    private void broadCastMessage(String message){
-        for(Socket socket: connection){
-            try{
-                PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-                out.println(userName + ":" + message);
-            } catch (IOException e){
-                throw new RuntimeException(e);
-            }
+    private void broadcastMessage(String message) {
+        for (PeerConnection pc : connections) {
+            pc.out.println(userName + ": " + message);
+            System.out.println("[DEBUG] Enviado para " + pc.socket.getRemoteSocketAddress() + ": " + message);
         }
     }
 
-    public void connectionToPeer(String host, int port){
+    public void connectToPeer(String host, int port) {
         try {
             Socket socket = new Socket(host, port);
-            connection.add(socket);
-            new Thread(() -> handleConnection(socket)).start();
-            System.out.println("Conectado ao peer em " + host + ": " + port);
-        } catch (IOException e) {
-            System.out.println("Erro ao conectar ao peer em " + host + ": " + port);
-            throw new RuntimeException(e);
-        }
+            PeerConnection pc = new PeerConnection(socket);
+            connections.add(pc);
 
+            new Thread(() -> handleConnection(pc)).start();
+            System.out.println("[INFO] Conectado ao peer em " + host + ":" + port);
+        } catch (IOException e) {
+            System.out.println("[ERROR] Erro ao conectar ao peer em " + host + ":" + port);
+        }
+    }
+
+    // Classe auxiliar para encapsular a conexão
+    private static class PeerConnection {
+        Socket socket;
+        BufferedReader in;
+        PrintWriter out;
+
+        PeerConnection(Socket socket) throws IOException {
+            this.socket = socket;
+            this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            this.out = new PrintWriter(socket.getOutputStream(), true);
+        }
     }
 }

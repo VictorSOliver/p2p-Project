@@ -6,35 +6,39 @@ public class Main {
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
 
-        // Solicitar nome do usuario
-        System.out.println("Digite seu nome do usuario: ");
+        // Solicitar nome do usuário
+        System.out.print("Digite seu nome do usuário: ");
         String userName = scanner.nextLine();
 
         // Solicitar porta
-        System.out.println("Digite a porta: ");
-        int port = scanner.nextInt();
-        scanner.nextLine();
+        System.out.print("Digite a porta do seu peer: ");
+        int port = Integer.parseInt(scanner.nextLine());
 
         // Inicializar o Peer
         Peer peer = new Peer(userName, port);
         peer.start();
 
-        // Perguntar se deseja conectar a outro peer
-        // Criar tratamento para caso o usuário escolha "n"
-        System.out.println("Deseja conectar a outro peer? s/n: ");
-        String resposta = scanner.nextLine();
+        // Loop para conectar a múltiplos peers
+        while (true) {
+            System.out.println("Deseja conectar a outro peer? (s/n): ");
+            String resposta = scanner.nextLine().trim();
 
-        if(resposta.equalsIgnoreCase("s")){
-            System.out.println("Digite o endereco do peer (host): ");
-            String peerHost = scanner.nextLine();
+            if (resposta.equalsIgnoreCase("s")) {
+                System.out.println("Digite o endereço do peer (host): ");
+                String peerHost = scanner.nextLine();
 
-            System.out.println("Digite a porta do peer (port): ");
-            int peerPort = scanner.nextInt();
-            scanner.nextLine();
+                System.out.println("Digite a porta do peer: ");
+                int peerPort = scanner.nextInt();
 
-            peer.connectionToPeer(peerHost, peerPort);
+                peer.connectToPeer(peerHost, peerPort);
+            } else if (resposta.equalsIgnoreCase("n")) {
+                break; // Sai do loop de conexão, continua apenas com chat
+            } else {
+                System.out.println("Opção inválida. Digite 's' ou 'n'.");
+            }
         }
-        scanner.close();
 
+        // Agora o peer continua rodando, enviando mensagens digitadas pelo usuário
+        System.out.println("[INFO] Você pode digitar mensagens para enviar a todos os peers conectados.");
     }
 }
