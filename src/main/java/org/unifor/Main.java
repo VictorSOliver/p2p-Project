@@ -1,44 +1,74 @@
 package org.unifor;
 
+import java.io.IOException;
 import java.util.Scanner;
 
+/**
+ * Ponto de entrada da aplicação de Chat P2P.
+ * Responsável por coletar a entrada do usuário e coordenar o objeto Peer.
+ */
 public class Main {
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
 
-        // Solicitar nome do usuário
-        System.out.print("Digite seu nome do usuário: ");
-        String userName = scanner.nextLine();
+        System.out.println("--- Bem-vindo ao Chat P2P ---");
 
-        // Solicitar porta
-        System.out.print("Digite a porta do seu peer: ");
-        int port = Integer.parseInt(scanner.nextLine());
+        try {
+            System.out.print("Digite seu nome de usuário: ");
+            String userName = scanner.nextLine();
 
-        // Inicializar o Peer
-        Peer peer = new Peer(userName, port);
-        peer.start();
+            System.out.print("Digite a porta em que seu peer irá ouvir (ex: 8081): ");
+            int port = Integer.parseInt(scanner.nextLine());
 
-        // Loop para conectar a múltiplos peers
-        while (true) {
-            System.out.print("Deseja conectar a outro peer? (s/n): ");
-            String resposta = scanner.nextLine().trim();
+            Peer peer = new Peer(userName, port);
+            peer.start(); // Inicia a thread do servidor para aceitar conexões.
 
-            if (resposta.equalsIgnoreCase("s")) {
-                System.out.print("Digite o endereço do peer (host): ");
-                String peerHost = scanner.nextLine().trim();
+            // --- MODO DE CONFIGURAÇÃO ---
+            // Loop para permitir que o usuário se conecte a outros peers.
+            while (true) {
+                System.out.print("Deseja conectar a outro peer? (s/n): ");
+                String resposta = scanner.nextLine().trim();
 
-                System.out.print("Digite a porta do peer: ");
-                int peerPort = Integer.parseInt(scanner.nextLine().trim());
+                if (resposta.equalsIgnoreCase("s")) {
+                    System.out.print("Digite o endereço do peer (host): ");
+                    String peerHost = scanner.nextLine().trim();
 
-                peer.connectToPeer(peerHost, peerPort);
-            } else if (resposta.equalsIgnoreCase("n")) {
-                break; // Sai do loop de conexão, continua apenas com chat
-            } else {
-                System.out.println("Opção inválida. Digite 's' ou 'n'.");
+                    System.out.print("Digite a porta do peer: ");
+                    try {
+                        int peerPort = Integer.parseInt(scanner.nextLine().trim());
+                        peer.connectToPeer(peerHost, peerPort);
+                    } catch (NumberFormatException e) {
+                        System.err.println("[ERRO] Porta inválida. Apenas números são permitidos.");
+                    }
+                } else if (resposta.equalsIgnoreCase("n")) {
+                    break; // Sai do modo de configuração e entra no modo de chat.
+                } else {
+                    System.out.println("Opção inválida. Digite 's' ou 'n'.");
+                }
             }
-        }
 
-        // Agora o peer continua rodando, enviando mensagens digitadas pelo usuário
-        System.out.println("[INFO] Você pode digitar mensagens para enviar a todos os peers conectados.");
+            // --- MODO DE CHAT ---
+            // A thread principal agora é a única responsável por ler o console para enviar mensagens.
+            System.out.println("\n[INFO] Configuração finalizada. O chat está ativo!");
+            System.out.println("Digite suas mensagens e pressione Enter para enviar. (Digite '/sair' para encerrar)");
+            while (true) {
+                String message = scanner.nextLine();
+                if (message == null || message.equalsIgnoreCase("/sair")) {
+                    break; // Permite que o usuário saia do chat.
+                } else {
+                    peer.broadcastMessage(message);
+                }
+
+            }
+
+        } catch (NumberFormatException e) {
+            System.err.println("[ERRO CRÍTICO] A porta deve ser um número. Encerrando.");
+        } catch (IOException e) {
+            // Este erro é capturado se o Peer não conseguir iniciar (ex: porta já em uso).
+            System.err.println("[ERRO CRÍTICO] Falha ao iniciar o peer. Encerrando.");
+        } finally {
+            System.out.println("Encerrando o chat...");
+            scanner.close(); // Fecha o scanner ao final da execução.
+        }
     }
 }

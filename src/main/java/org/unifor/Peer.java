@@ -4,95 +4,123 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
+/**
+ * Representa um nó (peer) na rede P2P. É responsável por ouvir por conexões,
+ * iniciar conexões com outros peers e transmitir mensagens.
+ */
 public class Peer {
     private String userName;
     private ServerSocket serverSocket;
 
-    // Agora a lista guarda objetos PeerConnection
-    private List<PeerConnection> connections = new ArrayList<>();
+    // Lista thread-safe para armazenar todas as conexões ativas.
+    private List<PeerConnection> connections = new CopyOnWriteArrayList<>();
 
-    public Peer(String userName, int port) {
+    /**
+     * Constrói um Peer, iniciando um ServerSocket para ouvir na porta especificada.
+     *
+     * @param userName O nome de usuário para este peer.
+     * @param port     A porta em que o servidor irá ouvir.
+     * @throws IOException Se a porta já estiver em uso ou ocorrer outro erro de I/O.
+     */
+    public Peer(String userName, int port) throws IOException {
         this.userName = userName;
         try {
-            serverSocket = new ServerSocket(port);
-            System.out.println("[INFO] Peer " + userName + " está ouvindo na porta " + port);
+            // Inicia o servidor para ouvir em todas as interfaces de rede disponíveis ("0.0.0.0").
+            // Isso aumenta a robustez em máquinas com múltiplas placas de rede.
+            this.serverSocket = new ServerSocket(port, 50, InetAddress.getByName("0.0.0.0"));
+            System.out.println("[INFO] Peer '" + userName + "' está ouvindo na porta " + port);
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println("[ERRO CRÍTICO] Não foi possível ouvir na porta " + port + ". Ela pode já estar em uso.");
+            throw e; // Relança a exceção para que a classe Main possa tratá-la.
         }
     }
 
+    /**
+     * Inicia a thread principal do servidor para aceitar novas conexões.
+     */
     public void start() {
         new Thread(this::listenForConnections).start();
-        new Thread(this::listenForUserInput).start();
-        System.out.println("[DEBUG] Peer " + userName + " iniciado");
     }
 
+    /**
+     * Loop infinito que aguarda e aceita novas conexões de entrada.
+     * Para cada nova conexão, uma nova thread de tratamento é iniciada.
+     */
     private void listenForConnections() {
-        System.out.println("[DEBUG] Entrou em listenForConnections()");
         while (true) {
             try {
-                Socket socket = serverSocket.accept();
+                Socket socket = serverSocket.accept(); // Bloqueia até uma nova conexão chegar.
                 PeerConnection pc = new PeerConnection(socket);
                 connections.add(pc);
-
                 System.out.println("[INFO] Nova conexão recebida de " + socket.getRemoteSocketAddress());
-
                 new Thread(() -> handleConnection(pc)).start();
             } catch (IOException e) {
-                System.out.println("[ERROR] Falha ao aceitar conexão: " + e.getMessage());
+                System.err.println("[ERRO] Falha ao aceitar nova conexão: " + e.getMessage());
             }
         }
     }
 
+    /**
+     * Lida com a comunicação de um peer específico, lendo as mensagens recebidas.
+     * Este método roda em sua própria thread para cada conexão.
+     *
+     * @param pc A conexão do peer a ser tratada.
+     */
     private void handleConnection(PeerConnection pc) {
         try {
             String message;
             while ((message = pc.in.readLine()) != null) {
-                System.out.println("[RECEBIDO de " + pc.socket.getRemoteSocketAddress() + "] " + message);
+                System.out.println(message); // Imprime a mensagem recebida (já formatada).
             }
-            System.out.println("[INFO] Conexão encerrada com " + pc.socket.getRemoteSocketAddress());
         } catch (IOException e) {
-            System.out.println("[WARN] Conexão perdida: " + pc.socket.getRemoteSocketAddress());
+            System.out.println("[AVISO] Conexão com " + pc.socket.getRemoteSocketAddress() + " foi perdida.");
+        } finally {
+            // Bloco crucial para remover a conexão da lista quando ela for encerrada.
+            // Isso evita o problema de "conexões zumbis".
+            connections.remove(pc);
+            System.out.println("[INFO] Conexão com " + pc.socket.getRemoteSocketAddress() + " foi encerrada.");
         }
     }
 
-    private void listenForUserInput() {
-        try (BufferedReader userInput = new BufferedReader(new InputStreamReader(System.in))) {
-            while (true) {
-                String message = userInput.readLine();
-                broadcastMessage(message);
-            }
-        } catch (IOException e) {
-            System.out.println("[ERROR] Falha ao ler entrada do usuário");
-        }
-    }
-
-    private void broadcastMessage(String message) {
+    /**
+     * Envia uma mensagem para todos os peers conectados.
+     *
+     * @param message A mensagem a ser enviada.
+     */
+    public void broadcastMessage(String message) {
+        String formattedMessage = "[" + userName + "]: " + message;
         for (PeerConnection pc : connections) {
-            pc.out.println(userName + ": " + message);
-            System.out.println("[DEBUG] Enviado para " + pc.socket.getRemoteSocketAddress() + ": " + message);
+            pc.out.println(formattedMessage);
         }
     }
 
+    /**
+     * Inicia uma nova conexão de saída para outro peer na rede.
+     *
+     * @param host O endereço IP ou nome do host do peer de destino.
+     * @param port A porta do peer de destino.
+     */
     public void connectToPeer(String host, int port) {
         try {
             Socket socket = new Socket(host, port);
             PeerConnection pc = new PeerConnection(socket);
             connections.add(pc);
-
             new Thread(() -> handleConnection(pc)).start();
-            System.out.println("[INFO] Conectado ao peer em " + host + ":" + port);
+            System.out.println("[INFO] Conectado com sucesso ao peer em " + host + ":" + port);
         } catch (IOException e) {
-            System.out.println("[ERROR] Erro ao conectar ao peer em " + host + ":" + port);
+            System.err.println("[ERRO] Falha ao conectar ao peer " + host + ":" + port + ". Motivo: " + e.getMessage());
         }
     }
 
-    // Classe auxiliar para encapsular a conexão
+    /**
+     * Classe interna para encapsular todos os objetos relacionados a uma única conexão.
+     */
     private static class PeerConnection {
         Socket socket;
         BufferedReader in;
@@ -101,7 +129,7 @@ public class Peer {
         PeerConnection(Socket socket) throws IOException {
             this.socket = socket;
             this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            this.out = new PrintWriter(socket.getOutputStream(), true);
+            this.out = new PrintWriter(socket.getOutputStream(), true); // autoFlush = true
         }
     }
 }
